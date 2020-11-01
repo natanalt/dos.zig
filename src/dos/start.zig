@@ -34,6 +34,12 @@ fn _start() callconv(.Naked) noreturn {
         .len = stub_info.min_keep,
     };
 
+    asm volatile ("call *%[func]"
+        : // No outputs
+        : [func] "m" (hello)
+        : "memory"
+    );
+
     std.os.exit(std.start.callMain());
 }
 
@@ -53,3 +59,9 @@ const StubInfo = extern struct {
     argv0: [16]u8, // Used only by the application.
     dpmi_server: [16]u8, // Not used by CWSDSTUB.
 };
+
+fn hello() callconv(.Naked) noreturn {
+    safe.print("Henlo\r\n", .{});
+    asm volatile ("ret");
+    unreachable;
+}
