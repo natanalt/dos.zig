@@ -60,8 +60,28 @@ const StubInfo = extern struct {
     dpmi_server: [16]u8, // Not used by CWSDSTUB.
 };
 
-fn hello() callconv(.Naked) noreturn {
-    safe.print("Henlo\r\n", .{});
-    asm volatile ("ret");
-    unreachable;
+comptime {
+    asm (
+        \\.global hello;
+        \\.type hello, @function;
+        \\hello:
+        \\  movb $0x2, %ah
+        \\  movb $'H', %dl
+        \\  int $0x21
+        \\  movb $'e', %dl
+        \\  int $0x21
+        \\  movb $'n', %dl
+        \\  int $0x21
+        \\  movb $'l', %dl
+        \\  int $0x21
+        \\  movb $'o', %dl
+        \\  int $0x21
+        \\  movb $13, %dl
+        \\  int $0x21
+        \\  movb $10, %dl
+        \\  int $0x21
+        \\  ret
+    );
 }
+
+extern fn hello() callconv(.Naked) noreturn;
