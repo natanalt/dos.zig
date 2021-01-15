@@ -1,6 +1,5 @@
-.global hello;
-.type hello, @function;
-hello:
+.global _hello_start;
+_hello_start:
     movb $0x2, %ah
     movb $'H', %dl
     int $0x21
@@ -16,4 +15,6 @@ hello:
     int $0x21
     movb $10, %dl
     int $0x21
-    ret
+    lret
+.global _hello_end;
+_hello_end:

@@ -1,8 +1,9 @@
 const root = @import("root");
 const std = @import("std");
 
+const dpmi = @import("dpmi.zig");
+const FarPtr = @import("far_ptr.zig").FarPtr;
 const safe = @import("safe.zig");
-const Segment = @import("dpmi.zig").Segment;
 const system = @import("system.zig");
 
 comptime {
@@ -24,7 +25,7 @@ fn _start() callconv(.Naked) noreturn {
     );
 
     // Initialize transfer buffer from stub info.
-    const stub_info = Segment.fromRegister("fs").farPtr().
+    const stub_info = dpmi.Segment.fromRegister("fs").farPtr().
         reader().readStruct(StubInfo) catch unreachable;
     system.transfer_buffer = .{
         .protected_mode_segment = .{
@@ -34,11 +35,9 @@ fn _start() callconv(.Naked) noreturn {
         .len = stub_info.min_keep,
     };
 
-    asm volatile ("call *%[func]"
-        : // No outputs
-        : [func] "m" (hello)
-        : "memory"
-    );
+    load_and_call_hello() catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
+    load_and_call_hello() catch unreachable;
+    load_and_call_hello() catch unreachable;
 
     std.os.exit(std.start.callMain());
 }
@@ -60,8 +59,28 @@ const StubInfo = extern struct {
     dpmi_server: [16]u8, // Not used by CWSDSTUB.
 };
 
+var far_hello: ?FarPtr = null;
+
+fn load_and_call_hello() !void {
+    if (far_hello == null) {
+        const len = @ptrToInt(&_hello_end) - @ptrToInt(&_hello_start);
+        const hello = @ptrCast([*]u8, &_hello_start)[0..len];
+        const block = try dpmi.ExtMemBlock.alloc(len);
+        const segment = block.createSegment(.Data);
+        segment.write(hello);
+        segment.setAccessRights(.Code);
+        far_hello = segment.farPtr();
+    }
+    asm volatile ("lcall *(%[func])"
+        : // No outputs
+        : [func] "r" (&far_hello.?)
+        : "memory"
+    );
+}
+
 comptime {
     asm (@embedFile("hello.s"));
 }
 
-extern fn hello() callconv(.Naked) noreturn;
+extern var _hello_start: opaque {};
+extern var _hello_end: opaque {};
