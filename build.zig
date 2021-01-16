@@ -19,6 +19,7 @@ pub fn build(b: *Builder) !void {
     }));
     coff_exe.single_threaded = true;
     coff_exe.strip = true;
+    coff_exe.install();
     coff_exe.installRaw("demo.coff");
 
     var cat_cmd = std.ArrayList(u8).init(b.allocator);

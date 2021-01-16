@@ -35,9 +35,11 @@ fn _start() callconv(.Naked) noreturn {
         .len = stub_info.min_keep,
     };
 
-    load_and_call_hello() catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
-    load_and_call_hello() catch unreachable;
-    load_and_call_hello() catch unreachable;
+    self_mem_handle = stub_info.mem_handle;
+    safe.print("Initial segment is {} bytes\r\n", .{stub_info.initial_size});
+    call_resize_self(stub_info.initial_size) catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
+    call_resize_self(stub_info.initial_size) catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
+    call_resize_self(stub_info.initial_size) catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
 
     std.os.exit(std.start.callMain());
 }
@@ -59,28 +61,53 @@ const StubInfo = extern struct {
     dpmi_server: [16]u8, // Not used by CWSDSTUB.
 };
 
-var far_hello: ?FarPtr = null;
+var self_mem_handle: usize = undefined;
+var far_resize_self: ?FarPtr = null;
 
-fn load_and_call_hello() !void {
-    if (far_hello == null) {
-        const len = @ptrToInt(&_hello_end) - @ptrToInt(&_hello_start);
-        const hello = @ptrCast([*]u8, &_hello_start)[0..len];
-        const block = try dpmi.ExtMemBlock.alloc(len);
+fn call_resize_self(size: usize) !void {
+    if (far_resize_self == null) {
+        const len = @ptrToInt(&resize_self_end) - @ptrToInt(&resize_self);
+        const resize_self_data = @ptrCast([*]u8, &resize_self)[0..len];
+        const block = try dpmi.ExtMemBlock.alloc(resize_self_data.len);
         const segment = block.createSegment(.Data);
-        segment.write(hello);
+        segment.write(resize_self_data);
         segment.setAccessRights(.Code);
-        far_hello = segment.farPtr();
+        far_resize_self = segment.farPtr();
     }
-    asm volatile ("lcall *(%[func])"
-        : // No outputs
-        : [func] "r" (&far_hello.?)
-        : "memory"
+    var mem_handle_hi: u16 = undefined;
+    var mem_handle_lo: u16 = undefined;
+    var errno: u16 = undefined;
+    const flags = asm volatile (
+        \\ lcall *(%[func])
+        \\ pushfw
+        \\ popw %[flags]
+        : [flags] "=r" (-> u16),
+          [errno] "={ax}" (errno),
+          [mem_handle_hi] "={si}" (mem_handle_hi),
+          [mem_handle_lo] "={di}" (mem_handle_lo)
+        : [func] "r" (&far_resize_self.?),
+          [_] "{bx}" (@truncate(u16, size >> 16)),
+          [_] "{cx}" (@truncate(u16, size)),
+          [_] "{si}" (@truncate(u16, self_mem_handle >> 16)),
+          [_] "{di}" (@truncate(u16, self_mem_handle))
+        : "cc", "dx", "memory"
     );
+    self_mem_handle = (@as(u32, mem_handle_hi) << 16) | mem_handle_lo;
+    if (flags & 1 != 0)
+        return switch (errno) {
+            0x8012 => error.LinearMemoryUnavailable,
+            0x8013 => error.PhysicalMemoryUnavailable,
+            0x8014 => error.BackingStoreUnavailable,
+            0x8016 => error.HandleUnavailable,
+            0x8021 => error.BadSize,
+            0x8023 => error.BadMemoryHandle,
+            else => |err| std.debug.panic(@src().fn_name ++ " failed with unexpected error code: {x}", .{err}),
+        };
 }
 
 comptime {
     asm (@embedFile("hello.s"));
 }
 
-extern var _hello_start: opaque {};
-extern var _hello_end: opaque {};
+extern var resize_self: opaque {};
+extern var resize_self_end: opaque {};
