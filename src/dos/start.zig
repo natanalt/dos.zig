@@ -36,7 +36,7 @@ fn _start() callconv(.Naked) noreturn {
     };
 
     self_mem_handle = stub_info.mem_handle;
-    call_resize_self(stub_info.initial_size + 0x1000) catch |e| panic("{s}\r\n", .{@errorName(e)});
+    call_resize_self(stub_info.initial_size * 2) catch |e| panic("{s}\r\n", .{@errorName(e)});
 
     std.os.exit(std.start.callMain());
 }
@@ -88,6 +88,7 @@ fn call_resize_self(size: usize) !void {
     self_mem_handle = (@as(u32, mem_handle_hi) << 16) | mem_handle_lo;
     return switch (error_code) {
         0 => {},
+        0x503 => error.OutOfMemory, // TODO: Figure out why error code is not set.
         0x8012 => error.LinearMemoryUnavailable,
         0x8013 => error.PhysicalMemoryUnavailable,
         0x8014 => error.BackingStoreUnavailable,
