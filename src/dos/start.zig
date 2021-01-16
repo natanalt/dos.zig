@@ -4,7 +4,6 @@ const panic = std.debug.panic;
 
 const dpmi = @import("dpmi.zig");
 const FarPtr = @import("far_ptr.zig").FarPtr;
-const safe = @import("safe.zig");
 const system = @import("system.zig");
 
 comptime {
@@ -37,10 +36,7 @@ fn _start() callconv(.Naked) noreturn {
     };
 
     self_mem_handle = stub_info.mem_handle;
-    safe.print("Initial segment is {} bytes\r\n", .{stub_info.initial_size});
-    call_resize_self(stub_info.initial_size) catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
-    call_resize_self(stub_info.initial_size) catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
-    call_resize_self(stub_info.initial_size) catch |e| std.debug.panic("{s}\r\n", .{@errorName(e)});
+    call_resize_self(stub_info.initial_size + 0x1000) catch |e| panic("{s}\r\n", .{@errorName(e)});
 
     std.os.exit(std.start.callMain());
 }
@@ -82,11 +78,12 @@ fn call_resize_self(size: usize) !void {
           [_] "={si}" (mem_handle_hi),
           [_] "={di}" (mem_handle_lo)
         : [func] "r" (&far_resize_self.?),
+          [_] "{dx}" (system.transfer_buffer.protected_mode_segment.selector),
           [_] "{bx}" (@truncate(u16, size >> 16)),
           [_] "{cx}" (@truncate(u16, size)),
           [_] "{si}" (@truncate(u16, self_mem_handle >> 16)),
           [_] "{di}" (@truncate(u16, self_mem_handle))
-        : "cc", "dx", "memory"
+        : "cc", "memory"
     );
     self_mem_handle = (@as(u32, mem_handle_hi) << 16) | mem_handle_lo;
     return switch (error_code) {
