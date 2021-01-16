@@ -71,19 +71,23 @@ fn call_resize_self(size: usize) !void {
         segment.setAccessRights(.Code);
         far_resize_self = segment.farPtr();
     }
+    var addr_hi: u16 = undefined;
+    var addr_lo: u16 = undefined;
     var mem_handle_hi: u16 = undefined;
     var mem_handle_lo: u16 = undefined;
     const error_code = asm volatile ("lcall *(%[func])"
         : [_] "={ax}" (-> u16),
+          [_] "={bx}" (addr_hi),
+          [_] "={cx}" (addr_lo),
           [_] "={si}" (mem_handle_hi),
           [_] "={di}" (mem_handle_lo)
         : [func] "r" (&far_resize_self.?),
-          [_] "{dx}" (system.transfer_buffer.protected_mode_segment.selector),
+          [_] "{ax}" (system.transfer_buffer.protected_mode_segment.selector),
           [_] "{bx}" (@truncate(u16, size >> 16)),
           [_] "{cx}" (@truncate(u16, size)),
           [_] "{si}" (@truncate(u16, self_mem_handle >> 16)),
           [_] "{di}" (@truncate(u16, self_mem_handle))
-        : "cc", "memory"
+        : "cc"
     );
     self_mem_handle = (@as(u32, mem_handle_hi) << 16) | mem_handle_lo;
     return switch (error_code) {

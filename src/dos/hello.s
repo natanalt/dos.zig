@@ -2,7 +2,7 @@
 # addresses. This function must be entered with a far call.
 #
 # Inputs:
-# DX    = alternate data segment
+# AX    = alternate data segment
 # BX:CX = new size of block
 # SI:DI = memory block handle
 #
@@ -14,24 +14,22 @@
 .global resize_self;
 resize_self:
 
-# Grab caller's CS from stack (behind caller's EIP).
-mov 4(%esp), %ax
-
-# Save the caller's extra segment registers to the caller's stack.
-push %es
-push %fs
-push %gs
+# Save the caller's registers to the caller's stack.
+pushw %dx
+pushw %es
+pushw %fs
+pushw %gs
 
 # Save the caller's primary segment registers to the extra segment registers.
-mov %ax, %es
+mov 12(%esp), %es # Caller's CS is on the stack before previous pushes and EIP.
 push %ds
 pop %fs
 push %ss
 pop %gs
 
 # Switch to the alternate data segment.
-mov %dx, %ds
-mov %dx, %ss
+mov %ax, %ds
+mov %ax, %ss
 
 # Resize memory block. Inputs are set by caller.
 mov $0x503, %ax
@@ -62,15 +60,16 @@ mov %dx, %cx
 .L_finish_2:
 
 # Restore caller's primary segment registers.
-mov %fs, %dx
-mov %dx, %ds
-mov %gs, %dx
-mov %dx, %ss
+push %fs
+pop %ds
+push %gs
+pop %ss
 
 # Restore caller's extra segment registers.
-pop %gs
-pop %fs
-pop %es
+popw %gs
+popw %fs
+popw %es
+popw %dx
 
 lret
 
