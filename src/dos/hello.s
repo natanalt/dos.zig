@@ -5,13 +5,10 @@
 # BX:CX = new size of block
 # SI:DI = memory block handle
 #
-# Outputs (success):
+# Outputs:
+# AX    = error code
 # BX:CX = new base address
 # SI:DI = new memory block handle
-#
-# Outputs (fail):
-# Carry flag = set
-# AX = error code
 
 .global resize_self;
 resize_self:
@@ -19,7 +16,7 @@ resize_self:
 # Resize memory block. Inputs are set by caller.
 mov $0x503, %ax
 int $0x31
-jc .Lreturn
+jc .Labort
 
 # Move returned linear address for next interrupt.
 mov %cx, %dx
@@ -29,19 +26,22 @@ mov %bx, %cx
 mov $0x7, %ax
 mov %ds, %bx
 int $0x31
-jc .Lfinish
+jc .Labort
 
 # Update base address of program's code segment.
 # Saved CS can be found on stack beyond saved EIP.
 movw 4(%esp), %bx
 int $0x31
+jc .Labort
 
-.Lfinish:
+# Clear error code register.
+xor %ax, %ax
+
 # Move linear address back to BX:CX for caller.
 mov %cx, %bx
 mov %dx, %cx
 
-.Lreturn:
+.Labort:
 lret
 
 .global resize_self_end;

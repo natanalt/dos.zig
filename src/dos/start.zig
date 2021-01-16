@@ -1,5 +1,6 @@
 const root = @import("root");
 const std = @import("std");
+const panic = std.debug.panic;
 
 const dpmi = @import("dpmi.zig");
 const FarPtr = @import("far_ptr.zig").FarPtr;
@@ -76,15 +77,10 @@ fn call_resize_self(size: usize) !void {
     }
     var mem_handle_hi: u16 = undefined;
     var mem_handle_lo: u16 = undefined;
-    var errno: u16 = undefined;
-    const flags = asm volatile (
-        \\ lcall *(%[func])
-        \\ pushfw
-        \\ popw %[flags]
-        : [flags] "=r" (-> u16),
-          [errno] "={ax}" (errno),
-          [mem_handle_hi] "={si}" (mem_handle_hi),
-          [mem_handle_lo] "={di}" (mem_handle_lo)
+    const error_code = asm volatile ("lcall *(%[func])"
+        : [_] "={ax}" (-> u16),
+          [_] "={si}" (mem_handle_hi),
+          [_] "={di}" (mem_handle_lo)
         : [func] "r" (&far_resize_self.?),
           [_] "{bx}" (@truncate(u16, size >> 16)),
           [_] "{cx}" (@truncate(u16, size)),
@@ -93,16 +89,16 @@ fn call_resize_self(size: usize) !void {
         : "cc", "dx", "memory"
     );
     self_mem_handle = (@as(u32, mem_handle_hi) << 16) | mem_handle_lo;
-    if (flags & 1 != 0)
-        return switch (errno) {
-            0x8012 => error.LinearMemoryUnavailable,
-            0x8013 => error.PhysicalMemoryUnavailable,
-            0x8014 => error.BackingStoreUnavailable,
-            0x8016 => error.HandleUnavailable,
-            0x8021 => error.BadSize,
-            0x8023 => error.BadMemoryHandle,
-            else => |err| std.debug.panic(@src().fn_name ++ " failed with unexpected error code: {x}", .{err}),
-        };
+    return switch (error_code) {
+        0 => {},
+        0x8012 => error.LinearMemoryUnavailable,
+        0x8013 => error.PhysicalMemoryUnavailable,
+        0x8014 => error.BackingStoreUnavailable,
+        0x8016 => error.HandleUnavailable,
+        0x8021 => error.BadSize,
+        0x8023 => error.BadMemoryHandle,
+        else => |err| panic(@src().fn_name ++ ": unexpected error code: {x}", .{err}),
+    };
 }
 
 comptime {
