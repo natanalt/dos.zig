@@ -36,7 +36,8 @@ fn _start() callconv(.Naked) noreturn {
     };
 
     self_mem_handle = stub_info.mem_handle;
-    call_resize_self(stub_info.initial_size * 2) catch |e| panic("{s}\r\n", .{@errorName(e)});
+    self_mem_size = stub_info.initial_size;
+    _ = sbrk(1) catch |e| panic("{s}\r\n", .{@errorName(e)});
 
     std.os.exit(std.start.callMain());
 }
@@ -59,7 +60,18 @@ const StubInfo = extern struct {
 };
 
 var self_mem_handle: usize = undefined;
+var self_mem_size: usize = undefined;
 var far_resize_self: ?FarPtr = null;
+
+pub fn sbrk(increment: isize) !usize {
+    if (increment != 0) {
+        // FIXME: Check for overflow.
+        const new_size = if (increment > 0) self_mem_size + @intCast(usize, increment) else self_mem_size - @intCast(usize, -increment);
+        try call_resize_self(new_size);
+        self_mem_size = new_size;
+    }
+    return self_mem_size;
+}
 
 fn call_resize_self(size: usize) !void {
     if (far_resize_self == null) {
